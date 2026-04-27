@@ -535,7 +535,7 @@ function showResultFromRoom(room) {
   </div>
 </div>
 
-<script>
+</div>
 // ========== STATE ==========
 const state = {
   screen: 'home',
@@ -636,19 +636,6 @@ setupPresence(code, 'p1');
   setupLobby();
   showScreen('lobby');
 
-state.unsub = listenToRoom(code, (room) => {
-    if (room.p2Name && !state.p2Joined) {
-      state.p2Joined = true;
-      state.p2Name = room.p2Name;
-      simulateP2Join();
-    }
-    if (room.status === 'game' && room.selectedGame) {
-      startGame(room.selectedGame);
-    }
-    if (room.status === 'result') {
-      showResultFromRoom(room);
-    }
-  });
 
   // Start listening for partner joining + game starting
   state.unsub = listenToRoom(code, (room) => {
@@ -708,9 +695,6 @@ function setupLobby() {
 }
 
 function simulateP2Join() {
-  if (state.role === 'creator') {
-    state.p2Name = ['Luna', 'Alex', 'Sam', 'Jamie'][Math.floor(Math.random()*4)];
-  } else {
     state.p2Name = state.p2Name || 'You';
     state.p1Name = 'Partner';
   }
@@ -1242,6 +1226,23 @@ function showPartnerLeft() {
 }
 
 
-</script>
+
+window.showCreateRoom = showCreateRoom;
+window.showJoin = showJoin;
+window.createRoom = createRoom;
+window.joinRoom = joinRoom;
+window.selectGame = selectGame;
+window.goBack = goBack;
+window.copyCode = copyCode;
+window.handleReactionTap = handleReactionTap;
+window.selectWKAnswer = selectWKAnswer;
+window.wkNextQuestion = wkNextQuestion;
+window.shareResult = shareResult;
+window.rematch = rematch;
+window.showLeaderboard = showLeaderboard;
+    
+    
+  
+  </script>
 </body>
 </html>
