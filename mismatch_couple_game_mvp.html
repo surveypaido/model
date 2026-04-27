@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mismatch</title>
+
+<!-- Add in your <head> -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+  import { getDatabase, ref, set, get, update, onValue, serverTimestamp, onDisconnect }
+    from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDTXf2jsEozbWMkT5wzOqvg8MzE2Uhj5ZA",
+    authDomain: "surveypaido.firebaseapp.com",
+    projectId: "surveypaido",
+    databaseURL: "https://surveypaido-default-rtdb.firebaseio.com",
+    storageBucket: "surveypaido.firebasestorage.app",
+    messagingSenderId: "521677279132",
+    appId: "1:521677279132:web:e7d3dff703fc3b17e24259"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // ── PASTE THE 5 FUNCTIONS HERE ──────────────────────────────
+
+  async function createRoom_fb(p1Name) {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const roomRef = ref(db, `rooms/${code}`);
+    await set(roomRef, {
+      createdAt: serverTimestamp(),
+      p1Name,
+      p2Name: null,
+      status: "lobby",
+      selectedGame: null,
+      p1Ready: false,
+      p2Ready: false,
+      scores: { p1: 0, p2: 0 },
+      progress: { p1: 0, p2: 0 },
+    });
+    onDisconnect(roomRef).remove();
+    return code;
+  }
+
+  async function joinRoom_fb(code, p2Name) {
+    const roomRef = ref(db, `rooms/${code}`);
+    const snapshot = await get(roomRef);
+    if (!snapshot.exists()) throw new Error("Room not found");
+    const room = snapshot.val();
+    if (room.p2Name) throw new Error("Room is full");
+    await update(roomRef, { p2Name });
+    return room;
+  }
+
+  function listenToRoom(code, onChange) {
+    const roomRef = ref(db, `rooms/${code}`);
+    const unsub = onValue(roomRef, (snapshot) => {
+      if (snapshot.exists()) onChange(snapshot.val());
+    });
+    return unsub;
+  }
+
+function setupPresence(code, role) {
+  const presenceRef = ref(db, `rooms/${code}/${role}Online`);
+  set(presenceRef, true);
+  onDisconnect(presenceRef).set(false);
+}
+
+
+  function updateMyProgress(code, role, progressPct) {
+    update(ref(db, `rooms/${code}/progress`), { [role]: progressPct });
+  }
+
+  function updateMyScore(code, role, score) {
+    update(ref(db, `rooms/${code}/scores`), { [role]: score });
+  }
+
+  function selectGameInRoom(code, gameName) {
+    update(ref(db, `rooms/${code}`), { selectedGame: gameName, status: "game" });
+  }
+
+
+function showResultFromRoom(room) {
+  // Use room scores to calculate love level + show result screen
+  const p1Score = room.scores?.p1 || 0;
+  const p2Score = room.scores?.p2 || 0;
+  state.scores = { p1: p1Score, p2: p2Score };
+  endGame(state.selectedGame || room.selectedGame);
+}
+
+
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0A0A10;
+    --surface:#13131F;
+    --surface2:#1C1C2E;
+    --border:#2A2A40;
+    --pink:#FF2D78;
+    --purple:#A855F7;
+    --blue:#3B82F6;
+    --cyan:#06B6D4;
+    --green:#22C55E;
+    --yellow:#EAB308;
+    --red:#EF4444;
+    --text:#F1F0FF;
+    --muted:#8B8BAA;
+    --font:'Space Grotesk',sans-serif;
+    --display:'Syne',sans-serif;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:600px;overflow:hidden}
+  #app{width:100%;height:600px;position:relative;display:flex;flex-direction:column}
+  
+  /* Screens */
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;transition:opacity .3s,transform .3s;opacity:0;pointer-events:none;transform:translateY(20px)}
+  .screen.active{opacity:1;pointer-events:all;transform:translateY(0)}
+  
+  /* BG decoration */
+  .bg-orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.15;pointer-events:none;z-index:0}
+  
+  /* Typography */
+  h1{font-family:var(--display);font-size:2.4rem;font-weight:800;line-height:1.1}
+  h2{font-family:var(--display);font-size:1.6rem;font-weight:800}
+  h3{font-family:var(--font);font-size:1.1rem;font-weight:700}
+  
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;border-radius:12px;font-family:var(--font);font-size:.95rem;font-weight:700;border:none;cursor:pointer;transition:all .2s;letter-spacing:.01em}
+  .btn-primary{background:linear-gradient(135deg,var(--pink),var(--purple));color:#fff;box-shadow:0 0 20px rgba(255,45,120,.3)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 30px rgba(255,45,120,.5)}
+  .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+  .btn-secondary:hover{background:var(--surface);border-color:var(--purple)}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+  .btn-ghost:hover{color:var(--text);border-color:var(--purple)}
+  .btn-sm{padding:8px 16px;font-size:.85rem;border-radius:8px}
+  .btn-lg{padding:16px 32px;font-size:1.1rem;border-radius:16px}
+  .btn-full{width:100%}
+  .btn:active{transform:scale(.97)}
+  
+  /* Cards */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px}
+  .card-glass{background:rgba(19,19,31,.8);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:20px}
+  
+  /* Input */
+  .input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-family:var(--font);font-size:.95rem;outline:none;transition:border .2s}
+  .input:focus{border-color:var(--purple)}
+  .input::placeholder{color:var(--muted)}
+  .input-lg{padding:14px 18px;font-size:1.05rem;border-radius:12px;text-align:center;font-weight:700;letter-spacing:4px;font-size:1.4rem}
+  
+  /* Tag / badge */
+  .badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:.75rem;font-weight:700;letter-spacing:.05em}
+  .badge-pink{background:rgba(255,45,120,.15);color:var(--pink);border:1px solid rgba(255,45,120,.3)}
+  .badge-purple{background:rgba(168,85,247,.15);color:var(--purple);border:1px solid rgba(168,85,247,.3)}
+  .badge-green{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+  
+  /* Progress bar */
+  .progress-wrap{background:var(--surface2);border-radius:99px;height:8px;overflow:hidden}
+  .progress-bar{height:100%;border-radius:99px;transition:width .5s ease}
+  
+  /* Avatar */
+  .avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.2rem;border:2px solid}
+  
+  /* Neon text */
+  .neon-pink{color:var(--pink);text-shadow:0 0 20px rgba(255,45,120,.6)}
+  .neon-purple{color:var(--purple);text-shadow:0 0 20px rgba(168,85,247,.6)}
+  .neon-cyan{color:var(--cyan);text-shadow:0 0 20px rgba(6,182,212,.6)}
+  
+  /* Timer ring */
+  .timer-ring{position:relative;display:inline-flex;align-items:center;justify-content:center}
+  .timer-ring svg{transform:rotate(-90deg)}
+  .timer-ring .timer-text{position:absolute;font-family:var(--display);font-weight:800;font-size:1.6rem}
+  
+  /* Scrollable */
+  .scroll{overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  
+  /* Divider */
+  .divider{height:1px;background:var(--border);margin:16px 0}
+  
+  /* Util */
+  .flex{display:flex}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mt-6{margin-top:24px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.p-4{padding:16px}.text-center{text-align:center}.text-sm{font-size:.85rem}.text-xs{font-size:.75rem}.text-muted{color:var(--muted)}.w-full{width:100%}.relative{position:relative}.z-1{z-index:1}.font-bold{font-weight:700}
+  
+  /* ======================== SCREEN-SPECIFIC ======================== */
+
+  /* HOME */
+  #home{padding:0;justify-content:center;align-items:center}
+  .home-content{z-index:1;text-align:center;padding:32px 24px;width:100%;max-width:420px}
+  .logo-mark{font-family:var(--display);font-size:3.5rem;font-weight:800;background:linear-gradient(135deg,var(--pink),var(--purple),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
+  .logo-sub{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:32px;letter-spacing:.15em;text-transform:uppercase}
+  .home-actions{display:flex;flex-direction:column;gap:12px}
+  
+  /* JOIN SCREEN */
+  #join{padding:24px;justify-content:center;align-items:center}
+  .join-content{width:100%;max-width:400px;z-index:1}
+  
+  /* LOBBY */
+  #lobby{padding:0;flex-direction:column}
+  .lobby-header{padding:20px 24px 16px;border-bottom:1px solid var(--border)}
+  .lobby-body{flex:1;padding:16px 24px;overflow-y:auto}
+  .room-code-display{background:linear-gradient(135deg,rgba(255,45,120,.1),rgba(168,85,247,.1));border:1px solid rgba(255,45,120,.3);border-radius:16px;padding:16px;text-align:center}
+  .room-code-big{font-family:var(--display);font-size:2.5rem;font-weight:800;letter-spacing:8px;color:var(--pink)}
+  .player-slot{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px}
+  .player-slot.waiting{border-style:dashed;opacity:.5}
+  .game-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:12px}
+  .game-card:hover{border-color:var(--purple);background:rgba(168,85,247,.05);transform:translateX(4px)}
+  .game-card.selected{border-color:var(--pink);background:rgba(255,45,120,.05)}
+  .game-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
+  
+  /* GAME SCREEN - PUZZLE */
+  #game-puzzle{padding:0;flex-direction:column}
+  .game-header{padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .puzzle-area{flex:1;display:flex;align-items:center;justify-content:center;padding:12px;position:relative}
+  .puzzle-grid{display:grid;gap:2px;border:2px solid var(--border);border-radius:8px;overflow:hidden;cursor:grab}
+  .puzzle-piece{background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--muted);position:relative;overflow:hidden;user-select:none;transition:border-color .15s}
+  .puzzle-piece.correct{border-color:var(--green)!important}
+  .puzzle-piece.dragging{opacity:.5;cursor:grabbing}
+  .puzzle-piece img{width:100%;height:100%;object-fit:cover;pointer-events:none;display:block}
+  
+  /* GAME SCREEN - REACTION */
+  #game-reaction{padding:24px;justify-content:center;align-items:center;flex-direction:column}
+  .reaction-zone{width:200px;height:200px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:2rem;font-family:var(--display);font-weight:800;font-size:1.3rem;text-align:center}
+  .reaction-zone.waiting{background:var(--surface2);border:3px dashed var(--border);color:var(--muted)}
+  .reaction-zone.ready{background:linear-gradient(135deg,var(--green),#16A34A);border:3px solid var(--green);box-shadow:0 0 40px rgba(34,197,94,.5);animation:pulse 1s infinite}
+  .reaction-zone.hit{background:linear-gradient(135deg,var(--pink),var(--purple));border:3px solid var(--pink);box-shadow:0 0 40px rgba(255,45,120,.5)}
+  .reaction-zone.false-start{background:linear-gradient(135deg,var(--red),#B91C1C);border:3px solid var(--red)}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  
+  /* GAME SCREEN - WHO KNOWS */
+  #game-whoknows{padding:16px;flex-direction:column;overflow:hidden}
+  .question-card{background:linear-gradient(135deg,rgba(255,45,120,.08),rgba(168,85,247,.08));border:1px solid rgba(168,85,247,.3);border-radius:16px;padding:20px;text-align:center}
+  .answer-option{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;cursor:pointer;transition:all .15s;font-weight:600}
+  .answer-option:hover{border-color:var(--purple);background:rgba(168,85,247,.05)}
+  .answer-option.selected{border-color:var(--pink);background:rgba(255,45,120,.1);color:var(--pink)}
+  .answer-option.correct{border-color:var(--green);background:rgba(34,197,94,.1);color:var(--green)}
+  .answer-option.wrong{border-color:var(--red);background:rgba(239,68,68,.1);color:var(--red);opacity:.6}
+  
+  /* RESULT */
+  #result{padding:0;flex-direction:column;overflow:hidden}
+  .result-card{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+  .love-level-text{font-family:var(--display);font-size:2.2rem;font-weight:800;text-align:center;line-height:1.2}
+  .meme-text{font-size:1.1rem;font-weight:700;color:var(--muted);text-align:center;max-width:280px}
+  .score-display{display:flex;gap:24px;align-items:center}
+  .score-block{text-align:center}
+  .score-num{font-family:var(--display);font-size:2.5rem;font-weight:800}
+  .vs-divider{font-family:var(--display);font-size:1.5rem;color:var(--muted);font-weight:800}
+  .coins-earned{display:inline-flex;align-items:center;gap:6px;background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.3);border-radius:8px;padding:6px 12px;color:var(--yellow);font-weight:700}
+  .result-actions{padding:16px 24px;display:flex;gap:12px;border-top:1px solid var(--border)}
+  
+  /* LEADERBOARD */
+  #leaderboard{padding:0;flex-direction:column}
+  .lb-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:between;gap:8px}
+  .lb-body{flex:1;overflow-y:auto;padding:8px}
+  .lb-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;margin-bottom:4px}
+  .lb-row:hover{background:var(--surface2)}
+  .lb-rank{font-family:var(--display);font-weight:800;font-size:1.1rem;min-width:28px;text-align:center}
+  .lb-coins{font-weight:700;color:var(--yellow);margin-left:auto}
+  
+  /* Notification */
+  .toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:.85rem;font-weight:600;z-index:100;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .3s}
+  .toast.show{opacity:1}
+
+  /* Loading dots */
+  .dot-pulse{display:flex;gap:6px;align-items:center}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--purple);animation:dotPulse 1.4s infinite}
+  .dot:nth-child(2){animation-delay:.2s}
+  .dot:nth-child(3){animation-delay:.4s}
+  @keyframes dotPulse{0%,80%,100%{transform:scale(0);opacity:.3}40%{transform:scale(1);opacity:1}}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Ambient background orbs -->
+  <div class="bg-orb" style="width:300px;height:300px;background:var(--pink);top:-80px;right:-60px"></div>
+  <div class="bg-orb" style="width:250px;height:250px;background:var(--purple);bottom:-60px;left:-50px"></div>
+  <div class="bg-orb" style="width:180px;height:180px;background:var(--cyan);top:40%;right:-40px;opacity:.08"></div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ===== HOME ===== -->
+  <div class="screen active" id="home">
+    <div class="home-content">
+      <div class="logo-mark">Mismatch</div>
+      <div class="logo-sub">couple gaming ⚡</div>
+      <div class="home-actions">
+        <button class="btn btn-primary btn-lg" onclick="showCreateRoom()">
+          <span style="font-size:1.2rem">✦</span> Create Room
+        </button>
+        <button class="btn btn-secondary btn-lg" onclick="showJoin()">
+          🔗 Join with Code
+        </button>
+        <button class="btn btn-ghost" onclick="showLeaderboard()">
+          🏆 Leaderboard
+        </button>
+      </div>
+      <p class="text-muted text-xs mt-6" style="letter-spacing:.05em">No login. No nonsense. Just chaos.</p>
+    </div>
+  </div>
+
+  <!-- ===== JOIN / CREATE ===== -->
+  <div class="screen" id="join">
+    <div class="join-content z-1">
+      <button class="btn btn-ghost btn-sm mb-4" onclick="goBack()">← Back</button>
+      <div id="join-inner"></div>
+    </div>
+  </div>
+
+  <!-- ===== LOBBY ===== -->
+  <div class="screen" id="lobby">
+    <div class="lobby-header">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 style="font-size:1.3rem">Room Lobby</h2>
+          <p class="text-sm text-muted">Share code with your partner</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="goBack()">← Back</button>
+      </div>
+    </div>
+    <div class="lobby-body scroll flex flex-col gap-4">
+      <!-- Room code -->
+      <div class="room-code-display">
+        <p class="text-xs text-muted mb-2" style="letter-spacing:.1em;text-transform:uppercase">Room Code</p>
+        <div class="room-code-big" id="lobby-code">ABC123</div>
+        <button class="btn btn-ghost btn-sm mt-3" onclick="copyCode()">📋 Copy Code</button>
+      </div>
+
+      <!-- Players -->
+      <div>
+        <p class="text-xs text-muted mb-2" style="letter-spacing:.08em;text-transform:uppercase">Players</p>
+        <div class="flex flex-col gap-2">
+          <div class="player-slot" id="p1-slot">
+            <div class="avatar" style="background:rgba(255,45,120,.15);color:var(--pink);border-color:var(--pink)"><span id="p1-initial">?</span></div>
+            <div><p class="font-bold" id="p1-name-display">—</p><p class="text-xs text-muted">Player 1</p></div>
+            <div class="ml-auto"><span class="badge badge-pink" id="p1-you" style="display:none">You</span></div>
+          </div>
+          <div class="player-slot waiting" id="p2-slot">
+            <div class="avatar" style="background:rgba(168,85,247,.1);color:var(--purple);border-color:rgba(168,85,247,.3)">
+              <div class="dot-pulse"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+            <div><p class="font-bold" id="p2-name-display" style="color:var(--muted)">Waiting...</p><p class="text-xs text-muted">Player 2</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game selection -->
+      <div id="game-selection-area" style="display:none">
+        <p class="text-xs text-muted mb-2" style="letter-spacing:.08em;text-transform:uppercase">Pick a Game</p>
+        <div class="flex flex-col gap-2">
+          <div class="game-card" id="gc-puzzle" onclick="selectGame('puzzle')">
+            <div class="game-icon" style="background:rgba(255,45,120,.15)">🧩</div>
+            <div><p class="font-bold" style="font-size:.95rem">Mismatch Puzzle</p><p class="text-xs text-muted">Solve each other's photos · 90s</p></div>
+            <div class="ml-auto text-muted text-xs">→</div>
+          </div>
+          <div class="game-card" id="gc-reaction" onclick="selectGame('reaction')">
+            <div class="game-icon" style="background:rgba(6,182,212,.15)">⚡</div>
+            <div><p class="font-bold" style="font-size:.95rem">Reaction Tap</p><p class="text-xs text-muted">Fastest finger wins</p></div>
+            <div class="ml-auto text-muted text-xs">→</div>
+          </div>
+          <div class="game-card" id="gc-whoknows" onclick="selectGame('whoknows')">
+            <div class="game-icon" style="background:rgba(168,85,247,.15)">💬</div>
+            <div><p class="font-bold" style="font-size:.95rem">Who Knows Better</p><p class="text-xs text-muted">Sync your minds · 5 questions</p></div>
+            <div class="ml-auto text-muted text-xs">→</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="waiting-partner-msg" class="text-center text-muted text-sm" style="padding:8px 0">
+        ⏳ Waiting for your partner to join...
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GAME: PUZZLE ===== -->
+  <div class="screen" id="game-puzzle">
+    <div class="game-header">
+      <div>
+        <p class="text-xs text-muted">Mismatch Puzzle</p>
+        <p class="font-bold text-sm" style="color:var(--pink)">Solve their photo!</p>
+      </div>
+      <!-- Timer -->
+      <div class="timer-ring">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--surface2)" stroke-width="4"/>
+          <circle id="timer-ring-circle" cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round"
+            stroke-dasharray="163.4" stroke-dashoffset="0"/>
+        </svg>
+        <span class="timer-text" id="puzzle-timer">90</span>
+      </div>
+      <div style="text-align:right">
+        <p class="text-xs text-muted">Opponent</p>
+        <div class="progress-wrap" style="width:80px"><div class="progress-bar" id="opp-progress" style="width:0%;background:linear-gradient(90deg,var(--purple),var(--pink))"></div></div>
+        <p class="text-xs text-muted mt-2" id="opp-pct">0%</p>
+      </div>
+    </div>
+    <div class="puzzle-area" id="puzzle-area">
+      <!-- Puzzle rendered by JS -->
+    </div>
+    <div class="p-4" style="border-top:1px solid var(--border)">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs text-muted">Your progress</p>
+          <div class="progress-wrap" style="width:160px;margin-top:4px"><div class="progress-bar" id="my-progress" style="width:0%;background:linear-gradient(90deg,var(--cyan),var(--green))"></div></div>
+        </div>
+        <p class="font-bold" id="my-pct" style="color:var(--cyan)">0%</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GAME: REACTION ===== -->
+  <div class="screen" id="game-reaction">
+    <div style="position:absolute;top:12px;right:16px;z-index:1">
+      <div class="timer-ring">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--surface2)" stroke-width="4"/>
+          <circle id="rt-ring" cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round"
+            stroke-dasharray="163.4" stroke-dashoffset="0"/>
+        </svg>
+        <span class="timer-text" id="reaction-timer">—</span>
+      </div>
+    </div>
+    
+    <p class="text-muted text-sm mb-2 z-1">Round <span id="rt-round">1</span> of 3</p>
+    <p class="font-bold z-1" style="font-size:1.1rem;margin-bottom:24px" id="rt-instruction">Get ready...</p>
+    
+    <div class="reaction-zone waiting z-1" id="reaction-zone" onclick="handleReactionTap()">
+      <div id="rt-content">Wait for it...</div>
+    </div>
+
+    <div class="flex gap-6 mt-6 z-1">
+      <div class="text-center">
+        <p class="text-xs text-muted">You</p>
+        <p class="font-bold" id="rt-my-score" style="font-size:1.5rem;color:var(--pink)">0</p>
+      </div>
+      <div class="vs-divider">VS</div>
+      <div class="text-center">
+        <p class="text-xs text-muted">Them</p>
+        <p class="font-bold" id="rt-opp-score" style="font-size:1.5rem;color:var(--purple)">0</p>
+      </div>
+    </div>
+    
+    <div id="rt-result-msg" class="mt-4 text-center font-bold z-1" style="font-size:1rem;min-height:24px;color:var(--green)"></div>
+  </div>
+
+  <!-- ===== GAME: WHO KNOWS ===== -->
+  <div class="screen" id="game-whoknows">
+    <div class="game-header">
+      <div>
+        <p class="text-xs text-muted">Who Knows Better</p>
+        <p class="font-bold text-sm" style="color:var(--purple)">Question <span id="wk-q-num">1</span> of 5</p>
+      </div>
+      <div class="timer-ring">
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--surface2)" stroke-width="4"/>
+          <circle id="wk-ring" cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="4" stroke-linecap="round"
+            stroke-dasharray="163.4" stroke-dashoffset="0"/>
+        </svg>
+        <span class="timer-text" id="wk-timer">90</span>
+      </div>
+    </div>
+    <div class="scroll flex-1 p-4 flex flex-col gap-3">
+      <div class="question-card">
+        <p class="text-xs text-muted mb-2" style="letter-spacing:.08em;text-transform:uppercase">Both answer</p>
+        <h3 style="font-size:1.05rem;line-height:1.4" id="wk-question">Loading question...</h3>
+      </div>
+      <div id="wk-answers" class="flex flex-col gap-2"></div>
+      <div id="wk-match-result" style="min-height:24px;text-align:center"></div>
+    </div>
+    <div class="p-4" style="border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div class="flex gap-4">
+        <div class="text-center"><p class="text-xs text-muted">You</p><p class="font-bold" id="wk-my-score" style="color:var(--pink)">0</p></div>
+        <div class="text-center"><p class="text-xs text-muted">Them</p><p class="font-bold" id="wk-opp-score" style="color:var(--purple)">0</p></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="wk-next-btn" onclick="wkNextQuestion()" style="display:none">Next →</button>
+    </div>
+  </div>
+
+  <!-- ===== RESULT ===== -->
+  <div class="screen" id="result">
+    <div class="result-card" id="result-card">
+      <!-- BG glow -->
+      <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,rgba(255,45,120,.12) 0%,transparent 70%);pointer-events:none"></div>
+      
+      <div style="z-index:1;width:100%;max-width:360px;text-align:center">
+        <div style="font-size:3.5rem;margin-bottom:8px" id="result-emoji">💞</div>
+        <p class="text-xs text-muted mb-2" style="letter-spacing:.12em;text-transform:uppercase">Love Level</p>
+        <div class="love-level-text neon-pink mb-2" id="result-love-level">Soul Sync</div>
+        <div class="meme-text text-muted mb-6" id="result-meme">Loading...</div>
+        
+        <!-- Scores -->
+        <div class="score-display justify-center mb-4">
+          <div class="score-block">
+            <p class="text-xs text-muted mb-1" id="r-p1-label">—</p>
+            <div class="score-num neon-pink" id="r-p1-score">0</div>
+          </div>
+          <div class="vs-divider" style="margin:0 8px">vs</div>
+          <div class="score-block">
+            <p class="text-xs text-muted mb-1" id="r-p2-label">—</p>
+            <div class="score-num neon-purple" id="r-p2-score">0</div>
+          </div>
+        </div>
+
+        <!-- Winner badge -->
+        <div class="mb-4">
+          <span class="badge badge-pink" id="r-winner-badge" style="font-size:.85rem;padding:6px 16px">🏆 — wins!</span>
+        </div>
+        
+        <!-- Coins -->
+        <div class="coins-earned mb-6">
+          <span>🪙</span>
+          <span id="r-coins">+10 coins earned</span>
+        </div>
+      </div>
+    </div>
+    <div class="result-actions">
+      <button class="btn btn-secondary flex-1" onclick="shareResult()">📸 Share</button>
+      <button class="btn btn-primary flex-1" onclick="rematch()">🔁 Rematch</button>
+    </div>
+  </div>
+
+  <!-- ===== LEADERBOARD ===== -->
+  <div class="screen" id="leaderboard">
+    <div class="lb-header flex items-center justify-between w-full">
+      <h2 style="font-size:1.3rem">🏆 Leaderboard</h2>
+      <button class="btn btn-ghost btn-sm" onclick="goBack()">← Back</button>
+    </div>
+    <div class="lb-body scroll" id="lb-list">
+      <!-- Populated by JS -->
+    </div>
+    <div class="p-4" style="border-top:1px solid var(--border);text-align:center">
+      <p class="text-xs text-muted">Rank based on total coins earned</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== STATE ==========
+const state = {
+  screen: 'home',
+  role: null, // 'creator' | 'joiner'
+  roomCode: '',
+  p1Name: '',
+  p2Name: '',
+  selectedGame: null,
+  p2Joined: false,
+  scores: {p1: 0, p2: 0},
+  totalCoins: JSON.parse(localStorage.getItem('mismatch_coins') || '0'),
+  leaderboard: JSON.parse(localStorage.getItem('mismatch_lb') || '[]'),
+  // puzzle state
+  puzzle: {pieces: [], correctMap: {}, solved: 0, total: 0, dragging: null, dragStart: null},
+  // reaction state
+  reaction: {round: 1, myScore: 0, oppScore: 0, state: 'waiting', timer: null, oppTimer: null},
+  // who knows state
+  whoknows: {qIndex: 0, myAnswer: null, oppAnswer: null, myScore: 0, oppScore: 0, answered: false},
+  gameTimer: null,
+  gameTimeLeft: 90,
+};
+
+// ========== NAVIGATION ==========
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  state.screen = id;
+}
+
+function goBack() {
+  const backs = {join:'home', lobby:'home', result:'home', leaderboard:'home'};
+  showScreen(backs[state.screen] || 'home');
+  clearTimers();
+}
+
+// ========== TOAST ==========
+function toast(msg, dur=2000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ========== HOME ACTIONS ==========
+function showCreateRoom() {
+  state.role = 'creator';
+  const code = generateCode();
+  state.roomCode = code;
+  document.getElementById('join-inner').innerHTML = `
+    <h2 class="mb-4">Create Room</h2>
+    <div class="flex flex-col gap-3">
+      <div>
+        <p class="text-sm text-muted mb-2">Your name</p>
+        <input class="input" id="creator-name" placeholder="Enter your name" maxlength="20" autofocus>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="createRoom()">✦ Start Room</button>
+    </div>
+    <div class="divider"></div>
+    <p class="text-xs text-muted text-center">A 6-character code will be generated for your partner</p>`;
+  showScreen('join');
+  setTimeout(() => document.getElementById('creator-name')?.focus(), 100);
+}
+
+function showJoin() {
+  state.role = 'joiner';
+  document.getElementById('join-inner').innerHTML = `
+    <h2 class="mb-4">Join Room</h2>
+    <div class="flex flex-col gap-3">
+      <div>
+        <p class="text-sm text-muted mb-2">Your name</p>
+        <input class="input" id="joiner-name" placeholder="Enter your name" maxlength="20">
+      </div>
+      <div>
+        <p class="text-sm text-muted mb-2">Room code</p>
+        <input class="input input-lg" id="joiner-code" placeholder="ABC123" maxlength="6" style="text-transform:uppercase">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="joinRoom()">🔗 Join Room</button>
+    </div>`;
+  showScreen('join');
+  setTimeout(() => document.getElementById('joiner-name')?.focus(), 100);
+}
+
+function generateCode() {
+  return Math.random().toString(36).substring(2,8).toUpperCase();
+}
+
+async function createRoom() {
+  const name = document.getElementById('creator-name').value.trim();
+  if (!name) { toast('Please enter your name'); return; }
+
+  toast('Creating room...');
+  const code = await createRoom_fb(name);   // writes to Firebase
+  state.p1Name = name;
+  state.roomCode = code;
+  state.role = 'p1';
+setupPresence(code, 'p1');
+
+  setupLobby();
+  showScreen('lobby');
+
+state.unsub = listenToRoom(code, (room) => {
+    if (room.p2Name && !state.p2Joined) {
+      state.p2Joined = true;
+      state.p2Name = room.p2Name;
+      simulateP2Join();
+    }
+    if (room.status === 'game' && room.selectedGame) {
+      startGame(room.selectedGame);
+    }
+    if (room.status === 'result') {
+      showResultFromRoom(room);
+    }
+  });
+
+  // Start listening for partner joining + game starting
+  state.unsub = listenToRoom(code, (room) => {
+    if (room.p2Name && !state.p2Joined) {
+      state.p2Joined = true;
+      state.p2Name = room.p2Name;
+      simulateP2Join();                     // reuse your existing UI update
+    }
+    if (room.status === 'game' && room.selectedGame) {
+      startGame(room.selectedGame);
+    }
+    if (room.status === 'result') {
+      showResultFromRoom(room);
+    }
+  });
+}
+async function joinRoom() {
+  const name = document.getElementById('joiner-name').value.trim();
+  const code = document.getElementById('joiner-code').value.trim().toUpperCase();
+  if (!name) { toast('Please enter your name'); return; }
+  if (code.length !== 6) { toast('Enter a valid 6-character code'); return; }
+
+  toast('Joining room...');
+  try {
+    const room = await joinRoom_fb(code, name);   // checks Firebase room exists
+    state.p2Name = name;
+    state.p1Name = room.p1Name;
+    state.roomCode = code;
+    state.role = 'p2';
+setupPresence(code, 'p2'); 
+    setupLobby();
+    showScreen('lobby');
+
+    state.unsub = listenToRoom(code, (room) => {
+      if (room.status === 'game' && room.selectedGame) {
+        startGame(room.selectedGame);
+      }
+      if (room.status === 'result') {
+        showResultFromRoom(room);
+      }
+    });
+
+  } catch(e) {
+    toast('❌ ' + e.message);
+  }
+}
+
+function setupLobby() {
+  document.getElementById('lobby-code').textContent = state.roomCode;
+  // P1 slot
+  const p1 = state.role === 'creator' ? state.p1Name : state.p1Name;
+  document.getElementById('p1-initial').textContent = p1.charAt(0).toUpperCase();
+  document.getElementById('p1-name-display').textContent = p1;
+  if (state.role === 'creator') document.getElementById('p1-you').style.display = '';
+  document.getElementById('game-selection-area').style.display = 'none';
+  document.getElementById('waiting-partner-msg').style.display = '';
+}
+
+function simulateP2Join() {
+  if (state.role === 'creator') {
+    state.p2Name = ['Luna', 'Alex', 'Sam', 'Jamie'][Math.floor(Math.random()*4)];
+  } else {
+    state.p2Name = state.p2Name || 'You';
+    state.p1Name = 'Partner';
+  }
+  state.p2Joined = true;
+  
+  // Update P2 slot
+  const p2Slot = document.getElementById('p2-slot');
+  p2Slot.classList.remove('waiting');
+  p2Slot.innerHTML = `
+    <div class="avatar" style="background:rgba(168,85,247,.15);color:var(--purple);border-color:var(--purple)">${(state.p2Name||'P').charAt(0).toUpperCase()}</div>
+    <div><p class="font-bold">${state.p2Name}</p><p class="text-xs text-muted">Player 2</p></div>
+    <div class="ml-auto"><span class="badge badge-purple" style="${state.role==='joiner'?'':'display:none'}">You</span><span class="badge badge-green" style="${state.role==='creator'?'':'display:none'}">Joined!</span></div>`;
+  
+  document.getElementById('p2-name-display').textContent = state.p2Name;
+  document.getElementById('game-selection-area').style.display = '';
+  document.getElementById('waiting-partner-msg').style.display = 'none';
+  toast('🎉 ' + state.p2Name + ' joined the room!');
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(state.roomCode).then(() => toast('📋 Code copied!')).catch(() => toast('Code: ' + state.roomCode));
+}
+
+// ========== GAME SELECTION ==========
+function selectGame(game) {
+  if (state.role !== 'p1') {
+    toast('Only the host can pick the game');
+    return;
+  }
+  document.querySelectorAll('.game-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('gc-' + game).classList.add('selected');
+  state.selectedGame = game;
+
+  // Write to Firebase — both devices will start via listenToRoom
+  selectGameInRoom(state.roomCode, game);
+}
+
+function startGame(game) {
+  clearTimers();
+  state.scores = {p1: 0, p2: 0};
+  if (game === 'puzzle') startPuzzleGame();
+  else if (game === 'reaction') startReactionGame();
+  else if (game === 'whoknows') startWhoKnows();
+}
+
+// ========== TIMER HELPERS ==========
+function clearTimers() {
+  clearInterval(state.gameTimer);
+  clearInterval(state.reaction.timer);
+  clearTimeout(state.reaction.oppTimer);
+}
+
+function startCountdown(seconds, ringId, textId, onTick, onEnd) {
+  let t = seconds;
+  const circum = 163.4;
+  const ring = document.getElementById(ringId);
+  const text = document.getElementById(textId);
+  if (ring) ring.setAttribute('stroke-dashoffset', 0);
+  if (text) text.textContent = t;
+
+  state.gameTimer = setInterval(() => {
+    t--;
+    const progress = t / seconds;
+    if (ring) ring.setAttribute('stroke-dashoffset', circum * (1 - progress));
+    const color = t > 60 ? 'var(--green)' : t > 30 ? 'var(--yellow)' : 'var(--red)';
+    if (ring) ring.setAttribute('stroke', color);
+    if (text) { text.textContent = t; text.style.color = color; }
+    if (onTick) onTick(t);
+    if (t <= 0) {
+      clearInterval(state.gameTimer);
+      if (onEnd) onEnd();
+    }
+  }, 1000);
+}
+
+// ========== PUZZLE GAME ==========
+const PUZZLE_IMAGES = [
+  'https://picsum.photos/seed/couple1/400/400',
+  'https://picsum.photos/seed/couple2/400/400',
+  'https://picsum.photos/seed/nature3/400/400',
+];
+
+function startPuzzleGame() {
+  showScreen('game-puzzle');
+  const N = 3; // 3x3 grid
+  const imgUrl = PUZZLE_IMAGES[Math.floor(Math.random() * PUZZLE_IMAGES.length)];
+  buildPuzzle(N, imgUrl);
+  
+  // Simulate opponent progress
+  let oppPct = 0;
+  const oppInterval = setInterval(() => {
+    oppPct += Math.random() * 8;
+    if (oppPct > 100) oppPct = 100;
+    document.getElementById('opp-progress').style.width = oppPct + '%';
+    document.getElementById('opp-pct').textContent = Math.round(oppPct) + '%';
+    if (oppPct >= 100) clearInterval(oppInterval);
+  }, 2000);
+
+  startCountdown(90, 'timer-ring-circle', 'puzzle-timer', null, () => {
+    clearInterval(oppInterval);
+    endGame('puzzle');
+  });
+}
+
+function buildPuzzle(N, imgUrl) {
+  const area = document.getElementById('puzzle-area');
+  const size = Math.min(area.clientWidth, area.clientHeight) - 20;
+  const cellSize = Math.floor((size - N * 2) / N);
+  
+  // Create pieces array: indices 0..N*N-1, shuffled
+  let pieces = Array.from({length: N*N}, (_, i) => i);
+  // Fisher-Yates shuffle
+  for (let i = pieces.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+  }
+  
+  state.puzzle = {N, pieces, solved: [], total: N*N, dragging: null, dragTarget: null};
+  
+  const grid = document.createElement('div');
+  grid.className = 'puzzle-grid';
+  grid.style.gridTemplateColumns = `repeat(${N}, ${cellSize}px)`;
+  grid.style.width = `${N * cellSize + (N-1)*2}px`;
+  grid.style.height = `${N * cellSize + (N-1)*2}px`;
+  
+  pieces.forEach((origIdx, pos) => {
+    const cell = document.createElement('div');
+    cell.className = 'puzzle-piece';
+    cell.style.width = cellSize + 'px';
+    cell.style.height = cellSize + 'px';
+    cell.dataset.pos = pos;
+    cell.dataset.orig = origIdx;
+    
+    // Show portion of image
+    const col = origIdx % N;
+    const row = Math.floor(origIdx / N);
+    cell.style.backgroundImage = `url(${imgUrl})`;
+    cell.style.backgroundSize = `${N * 100}%`;
+    cell.style.backgroundPosition = `${col * (100/(N-1))}% ${row * (100/(N-1))}%`;
+    cell.style.backgroundRepeat = 'no-repeat';
+    
+    // Show piece number
+    cell.innerHTML = `<span style="position:absolute;bottom:2px;right:4px;font-size:9px;color:rgba(255,255,255,.4);font-weight:700">${origIdx+1}</span>`;
+    
+    cell.draggable = true;
+    cell.addEventListener('dragstart', e => {
+      state.puzzle.dragging = parseInt(e.target.dataset.pos);
+      e.target.classList.add('dragging');
+    });
+    cell.addEventListener('dragover', e => e.preventDefault());
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = state.puzzle.dragging;
+      const to = parseInt(e.currentTarget.dataset.pos);
+      if (from !== null && from !== to) swapPieces(from, to);
+    });
+    cell.addEventListener('dragend', e => { e.target.classList.remove('dragging'); state.puzzle.dragging = null; });
+    
+    // Touch support
+    let touchStart = null;
+    cell.addEventListener('touchstart', e => { touchStart = parseInt(e.currentTarget.dataset.pos); e.preventDefault(); }, {passive:false});
+    cell.addEventListener('touchend', e => {
+      const touch = e.changedTouches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      const piece = el?.closest('.puzzle-piece');
+      if (piece && touchStart !== null) {
+        const to = parseInt(piece.dataset.pos);
+        if (touchStart !== to) swapPieces(touchStart, to);
+      }
+      touchStart = null;
+    }, {passive:false});
+
+    grid.appendChild(cell);
+  });
+  
+  area.innerHTML = '';
+  area.appendChild(grid);
+  checkPuzzleComplete();
+}
+
+function swapPieces(from, to) {
+  const grid = document.querySelector('.puzzle-grid');
+  const cells = grid.querySelectorAll('.puzzle-piece');
+  const N = state.puzzle.N;
+  
+  // Swap dataset
+  const fromOrig = cells[from].dataset.orig;
+  const toOrig = cells[to].dataset.orig;
+  cells[from].dataset.orig = toOrig;
+  cells[to].dataset.orig = fromOrig;
+  
+  // Swap background positions
+  const swap = (a, b, prop) => { const t = a.style[prop]; a.style[prop] = b.style[prop]; b.style[prop] = t; };
+  swap(cells[from], cells[to], 'backgroundPosition');
+  
+  // Swap number labels
+  const aSpan = cells[from].querySelector('span');
+  const bSpan = cells[to].querySelector('span');
+  const t = aSpan.textContent;
+  aSpan.textContent = bSpan.textContent;
+  bSpan.textContent = t;
+
+  checkPuzzleComplete();
+}
+
+function checkPuzzleComplete() {
+  const cells = document.querySelectorAll('.puzzle-piece');
+  const N = state.puzzle.N;
+  let correct = 0;
+  cells.forEach((c, i) => {
+    const isCorrect = parseInt(c.dataset.orig) === i;
+    c.classList.toggle('correct', isCorrect);
+    if (isCorrect) correct++;
+  });
+  const pct = Math.round((correct / (N*N)) * 100);
+  document.getElementById('my-progress').style.width = pct + '%';
+  document.getElementById('my-pct').textContent = pct + '%';
+  state.scores.p1 = correct;
+  
+  if (correct === N * N) {
+    clearTimers();
+    toast('🎉 Puzzle Complete!');
+    setTimeout(() => endGame('puzzle'), 800);
+  }
+}
+
+// ========== REACTION GAME ==========
+function startReactionGame() {
+  showScreen('game-reaction');
+  state.reaction = {round: 1, myScore: 0, oppScore: 0, state: 'waiting', timer: null, oppTimer: null};
+  runReactionRound();
+}
+
+function runReactionRound() {
+  if (state.reaction.round > 3) { endGame('reaction'); return; }
+  document.getElementById('rt-round').textContent = state.reaction.round;
+  document.getElementById('rt-result-msg').textContent = '';
+  document.getElementById('rt-my-score').textContent = state.reaction.myScore;
+  document.getElementById('rt-opp-score').textContent = state.reaction.oppScore;
+  
+  const zone = document.getElementById('reaction-zone');
+  zone.className = 'reaction-zone waiting z-1';
+  document.getElementById('rt-content').textContent = 'Wait for it...';
+  document.getElementById('rt-instruction').textContent = 'Get ready...';
+  state.reaction.state = 'waiting';
+  
+  const delay = 1500 + Math.random() * 2500;
+  state.reaction.timer = setTimeout(() => {
+    if (state.reaction.state !== 'waiting') return;
+    state.reaction.state = 'ready';
+    zone.className = 'reaction-zone ready z-1';
+    document.getElementById('rt-content').textContent = 'TAP NOW!';
+    document.getElementById('rt-instruction').textContent = '⚡ Hit it!';
+    
+    // Simulate opponent reaction
+    const oppDelay = 200 + Math.random() * 600;
+    state.reaction.oppTimer = setTimeout(() => {
+      if (state.reaction.state === 'ready') {
+        state.reaction.oppScore++;
+        document.getElementById('rt-opp-score').textContent = state.reaction.oppScore;
+        document.getElementById('rt-result-msg').textContent = '😤 They got it first!';
+        document.getElementById('rt-result-msg').style.color = 'var(--red)';
+        state.reaction.state = 'done';
+        zone.className = 'reaction-zone waiting z-1';
+        document.getElementById('rt-content').textContent = 'Round lost';
+        state.reaction.round++;
+        setTimeout(runReactionRound, 1500);
+      }
+    }, oppDelay);
+    
+    // Auto-timeout 
+    setTimeout(() => {
+      if (state.reaction.state === 'ready') {
+        state.reaction.state = 'missed';
+        document.getElementById('rt-result-msg').textContent = '😭 Too slow!';
+        document.getElementById('rt-result-msg').style.color = 'var(--red)';
+        zone.className = 'reaction-zone waiting z-1';
+        state.reaction.round++;
+        setTimeout(runReactionRound, 1500);
+      }
+    }, 3000);
+  }, delay);
+}
+
+function handleReactionTap() {
+  if (state.reaction.state === 'waiting') {
+    const zone = document.getElementById('reaction-zone');
+    zone.className = 'reaction-zone false-start z-1';
+    document.getElementById('rt-content').textContent = 'False start! 🚫';
+    document.getElementById('rt-result-msg').textContent = '😬 Too early!';
+    document.getElementById('rt-result-msg').style.color = 'var(--yellow)';
+    state.reaction.state = 'false';
+    clearTimeout(state.reaction.timer);
+    clearTimeout(state.reaction.oppTimer);
+    state.reaction.round++;
+    setTimeout(runReactionRound, 1500);
+    return;
+  }
+  if (state.reaction.state !== 'ready') return;
+  
+  clearTimeout(state.reaction.oppTimer);
+  state.reaction.myScore++;
+  state.reaction.state = 'done';
+  document.getElementById('rt-my-score').textContent = state.reaction.myScore;
+  const zone = document.getElementById('reaction-zone');
+  zone.className = 'reaction-zone hit z-1';
+  document.getElementById('rt-content').textContent = '✓ Got it!';
+  document.getElementById('rt-result-msg').textContent = '⚡ You were first!';
+  document.getElementById('rt-result-msg').style.color = 'var(--green)';
+  state.reaction.round++;
+  setTimeout(runReactionRound, 1500);
+}
+
+// ========== WHO KNOWS GAME ==========
+const WK_QUESTIONS = [
+  {q: "What's your ideal date night?", opts: ["Netflix at home","Fancy dinner","Adventure outside","Bar & friends"]},
+  {q: "What's your love language?", opts: ["Words of affirmation","Physical touch","Quality time","Gifts"]},
+  {q: "Pick a travel destination together:", opts: ["Paris","Tokyo","New York","Bali"]},
+  {q: "What's your relationship vibe?", opts: ["Partners in crime","Best friends","Soulmates","Chaotic duo"]},
+  {q: "Pick your couple superpower:", opts: ["Telepathy","Never fighting","Always on time","Perfect taste"]},
+];
+
+function startWhoKnows() {
+  showScreen('game-whoknows');
+  state.whoknows = {qIndex: 0, myAnswer: null, oppAnswer: null, myScore: 0, oppScore: 0, answered: false};
+  renderWKQuestion();
+  startCountdown(90, 'wk-ring', 'wk-timer', null, () => endGame('whoknows'));
+}
+
+function renderWKQuestion() {
+  const {qIndex} = state.whoknows;
+  if (qIndex >= WK_QUESTIONS.length) { endGame('whoknows'); return; }
+  const q = WK_QUESTIONS[qIndex];
+  state.whoknows.myAnswer = null;
+  state.whoknows.oppAnswer = null;
+  state.whoknows.answered = false;
+  document.getElementById('wk-q-num').textContent = qIndex + 1;
+  document.getElementById('wk-question').textContent = q.q;
+  document.getElementById('wk-match-result').innerHTML = '';
+  document.getElementById('wk-next-btn').style.display = 'none';
+  document.getElementById('wk-my-score').textContent = state.whoknows.myScore;
+  document.getElementById('wk-opp-score').textContent = state.whoknows.oppScore;
+  
+  const ans = document.getElementById('wk-answers');
+  ans.innerHTML = '';
+  q.opts.forEach((opt, i) => {
+    const div = document.createElement('div');
+    div.className = 'answer-option';
+    div.textContent = opt;
+    div.onclick = () => selectWKAnswer(i, opt);
+    ans.appendChild(div);
+  });
+}
+
+function selectWKAnswer(idx, opt) {
+  if (state.whoknows.answered) return;
+  state.whoknows.answered = true;
+  state.whoknows.myAnswer = idx;
+  
+  // Highlight selected
+  const opts = document.querySelectorAll('.answer-option');
+  opts.forEach((o, i) => { if (i === idx) o.classList.add('selected'); });
+  
+  // Simulate opponent picking
+  setTimeout(() => {
+    const oppIdx = Math.random() < 0.45 ? idx : Math.floor(Math.random() * 4);
+    state.whoknows.oppAnswer = oppIdx;
+    
+    opts.forEach((o, i) => {
+      if (i === idx) o.classList.add(i === oppIdx ? 'correct' : 'wrong');
+      else if (i === oppIdx) o.classList.add('correct');
+    });
+    
+    const matched = idx === oppIdx;
+    if (matched) {
+      state.whoknows.myScore += 20;
+      state.whoknows.oppScore += 20;
+      document.getElementById('wk-match-result').innerHTML = '<span style="color:var(--green);font-weight:700">💞 You matched! +20pts each</span>';
+    } else {
+      document.getElementById('wk-match-result').innerHTML = '<span style="color:var(--muted);font-weight:700">😬 No match this time</span>';
+    }
+    document.getElementById('wk-my-score').textContent = state.whoknows.myScore;
+    document.getElementById('wk-opp-score').textContent = state.whoknows.oppScore;
+    document.getElementById('wk-next-btn').style.display = state.whoknows.qIndex < WK_QUESTIONS.length - 1 ? '' : 'none';
+    
+    if (state.whoknows.qIndex >= WK_QUESTIONS.length - 1) {
+      setTimeout(() => endGame('whoknows'), 1200);
+    }
+  }, 800);
+}
+
+function wkNextQuestion() {
+  state.whoknows.qIndex++;
+  renderWKQuestion();
+}
+
+// ========== END GAME / RESULT ==========
+const LOVE_LEVELS = {
+  soul: {emoji:'💞', label:'Soul Sync', color:'neon-pink', memes:["Same brain or what?? 😳","Telepathy unlocked 🧠✨","Are you two even real 😭"]},
+  bond: {emoji:'💘', label:'Strong Bond', color:'neon-purple', memes:["Solid couple 😌","Carried a bit tho 😂","Keep this energy fr 🔥"]},
+  mismatch: {emoji:'💔', label:'Mismatch', color:'neon-cyan', memes:["Who are you even dating?? 😂","Rematch ASAP 🚨","This is embarrassing lmao 😭"]},
+};
+
+function endGame(game) {
+  clearTimers();
+  
+  let p1Score, p2Score;
+  if (game === 'puzzle') {
+    p1Score = state.scores.p1 * 10;
+    p2Score = Math.round(parseFloat(document.getElementById('opp-progress').style.width)) || Math.round(Math.random() * 50 + 20);
+  } else if (game === 'reaction') {
+    p1Score = state.reaction.myScore * 100;
+    p2Score = state.reaction.oppScore * 100;
+  } else {
+    p1Score = state.whoknows.myScore;
+    p2Score = state.whoknows.oppScore;
+  }
+  
+  const diff = Math.abs(p1Score - p2Score);
+  const maxScore = Math.max(p1Score, p2Score, 1);
+  const ratio = diff / maxScore;
+  
+  let level;
+  if (ratio < 0.2) level = LOVE_LEVELS.soul;
+  else if (ratio < 0.5) level = LOVE_LEVELS.bond;
+  else level = LOVE_LEVELS.mismatch;
+  
+  const winner = p1Score >= p2Score ? state.p1Name : state.p2Name;
+  const isDraw = p1Score === p2Score;
+  const myCoins = p1Score >= p2Score ? (isDraw ? 6 : 10) : 4;
+  state.totalCoins += myCoins;
+  localStorage.setItem('mismatch_coins', state.totalCoins);
+  
+  // Update leaderboard
+  updateLeaderboard(state.p1Name, state.p2Name, state.totalCoins);
+  
+  // Render result
+  document.getElementById('result-emoji').textContent = level.emoji;
+  const ll = document.getElementById('result-love-level');
+  ll.textContent = level.label;
+  ll.className = 'love-level-text mb-2 ' + level.color;
+  document.getElementById('result-meme').textContent = level.memes[Math.floor(Math.random()*level.memes.length)];
+  document.getElementById('r-p1-label').textContent = state.p1Name || 'You';
+  document.getElementById('r-p2-label').textContent = state.p2Name || 'Them';
+  document.getElementById('r-p1-score').textContent = p1Score;
+  document.getElementById('r-p2-score').textContent = p2Score;
+  document.getElementById('r-winner-badge').textContent = isDraw ? '🤝 It\'s a draw!' : '🏆 ' + winner + ' wins!';
+  document.getElementById('r-coins').textContent = '+' + myCoins + ' coins earned';
+  
+  showScreen('result');
+}
+
+function updateLeaderboard(p1, p2, coins) {
+  let lb = state.leaderboard;
+  const key = [p1, p2].sort().join(' & ');
+  const existing = lb.find(e => e.key === key);
+  if (existing) existing.coins = Math.max(existing.coins, coins);
+  else lb.push({key, name: p1 + ' & ' + p2, coins});
+  lb.sort((a,b) => b.coins - a.coins);
+  lb = lb.slice(0, 20);
+  state.leaderboard = lb;
+  localStorage.setItem('mismatch_lb', JSON.stringify(lb));
+}
+
+function shareResult() {
+  toast('📸 Screenshot this screen to share!');
+}
+
+function rematch() {
+  state.scores = {p1: 0, p2: 0};
+  showScreen('lobby');
+  // Re-enable game selection
+  document.querySelectorAll('.game-card').forEach(c => c.classList.remove('selected'));
+}
+
+// ========== LEADERBOARD ==========
+function showLeaderboard() {
+  renderLeaderboard();
+  showScreen('leaderboard');
+}
+
+function renderLeaderboard() {
+  const lb = state.leaderboard;
+  const list = document.getElementById('lb-list');
+  
+  const medalColors = ['var(--yellow)', 'var(--muted)', '#CD7F32'];
+  const medals = ['🥇','🥈','🥉'];
+  
+  if (lb.length === 0) {
+    list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2.5rem;margin-bottom:12px">🏆</div><p>Play games to appear here!</p></div>';
+    return;
+  }
+  
+  list.innerHTML = lb.map((entry, i) => `
+    <div class="lb-row">
+      <div class="lb-rank" style="color:${i < 3 ? medalColors[i] : 'var(--muted)'}">${i < 3 ? medals[i] : (i+1)}</div>
+      <div>
+        <p class="font-bold" style="font-size:.9rem">${entry.name}</p>
+      </div>
+      <div class="lb-coins">🪙 ${entry.coins}</div>
+    </div>
+  `).join('');
+}
+
+// ========== KEYBOARD ==========
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (state.screen === 'join') {
+      if (state.role === 'creator') createRoom();
+      else joinRoom();
+    }
+  }
+  if (e.key === ' ' && state.screen === 'game-reaction') {
+    e.preventDefault();
+    handleReactionTap();
+  }
+});
+
+
+
+
+function showPartnerLeft() {
+  clearTimers();
+  toast('😢 Your partner disconnected', 4000);
+  setTimeout(() => {
+    if (state.unsub) state.unsub();   // stop listening to room
+    goBack();                          // sends back to home screen
+  }, 3000);
+}
+
+
+</script>
+</body>
+</html>
