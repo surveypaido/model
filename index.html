@@ -286,13 +286,13 @@ function showResultFromRoom(room) {
       <div class="logo-mark">Mismatch</div>
       <div class="logo-sub">couple gaming ⚡</div>
       <div class="home-actions">
-        <button class="btn btn-primary btn-lg" onclick="showCreateRoom()">
+        <button class="btn btn-primary btn-lg" id="btn-create">
           <span style="font-size:1.2rem">✦</span> Create Room
         </button>
-        <button class="btn btn-secondary btn-lg" onclick="showJoin()">
+       <button class="btn btn-secondary btn-lg" id="btn-join">
           🔗 Join with Code
         </button>
-        <button class="btn btn-ghost" onclick="showLeaderboard()">
+       <button class="btn btn-ghost" id="btn-lb">
           🏆 Leaderboard
         </button>
       </div>
@@ -1226,7 +1226,11 @@ function showPartnerLeft() {
   }, 3000);
 }
 
-
+ if (e.key === ' ' && state.screen === 'game-reaction') {
+    e.preventDefault();
+    handleReactionTap();
+  }
+});
 
 window.showCreateRoom = showCreateRoom;
 window.showJoin = showJoin;
@@ -1243,6 +1247,26 @@ window.rematch = rematch;
 window.showLeaderboard = showLeaderboard;
     
     }); 
+
+
+    // Wire all buttons
+document.getElementById('btn-create').addEventListener('click', showCreateRoom);
+document.getElementById('btn-join').addEventListener('click', showJoin);
+document.getElementById('btn-lb').addEventListener('click', showLeaderboard);
+document.getElementById('btn-create-room')?.addEventListener('click', createRoom);
+document.getElementById('btn-join-room')?.addEventListener('click', joinRoom);
+
+// Fix all other onclick buttons
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const actions = {
+    goBack, copyCode, handleReactionTap,
+    wkNextQuestion, shareResult, rematch
+  };
+  if (actions[action]) actions[action]();
+});
   
   </script>
 </body>
