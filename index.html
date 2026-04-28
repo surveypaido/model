@@ -577,15 +577,8 @@ function startPuzzle(){
   const N=3, img=IMGS[Math.floor(Math.random()*IMGS.length)];
   S.puzzle.N=N;
   buildPuzzle(N,img);
-  // Simulate opponent progress
-  let opp=0;
-  const oi = setInterval(()=>{
-    opp+=Math.random()*7; if(opp>100)opp=100;
-    document.getElementById('opp-bar').style.width=opp+'%';
-    document.getElementById('opp-pct-text').textContent=Math.round(opp)+'%';
-    if(opp>=100) clearInterval(oi);
-  },2200);
-  startCountdown(90,'pz-ring','pz-timer',()=>{ clearInterval(oi); endGame('puzzle'); });
+  
+  startCountdown(90,'pz-ring','pz-timer',()=>{ endGame('puzzle'); });
 }
 
 function buildPuzzle(N,imgUrl){
